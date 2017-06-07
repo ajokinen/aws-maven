@@ -16,9 +16,12 @@
 
 package fi.yle.tools.aws.maven;
 
+import com.amazonaws.AmazonClientException;
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.ClientConfiguration;
 import com.amazonaws.auth.BasicSessionCredentials;
+import com.amazonaws.regions.DefaultAwsRegionProviderChain;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.internal.Mimetypes;
@@ -98,10 +101,26 @@ public final class SimpleStorageServiceWagon extends AbstractWagon {
             } else {
                 this.amazonS3 = new AmazonS3Client(credentialsProvider, clientConfiguration);
             }
-
-            fi.yle.tools.aws.maven.Region region = fi.yle.tools.aws.maven.Region.fromLocationConstraint(this.amazonS3.getBucketLocation(this.bucketName));
-            this.amazonS3.setEndpoint(region.getEndpoint());
+            try {
+                com.amazonaws.regions.Region region = parseRegion(new DefaultAwsRegionProviderChain().getRegion());
+                if (!region.getPartition().equals("aws")) {
+                    this.amazonS3.setRegion(region);
+                } else {
+                    detectEndpointFromBucket();
+                }
+            } catch (AmazonClientException e) {
+                detectEndpointFromBucket();
+            }
         }
+    }
+
+    private com.amazonaws.regions.Region parseRegion(String region) {
+        return com.amazonaws.regions.Region.getRegion(Regions.fromName(region));
+    }
+
+    private void detectEndpointFromBucket() {
+        Region region = Region.fromLocationConstraint(this.amazonS3.getBucketLocation(this.bucketName));
+        this.amazonS3.setEndpoint(region.getEndpoint());
     }
 
     protected BasicSessionCredentials getAssumedCredentialsIfRequested(AuthenticationInfoAWSCredentialsProviderChain credentials) {
